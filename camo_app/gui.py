@@ -429,6 +429,12 @@ class CAMOMainWindow(QMainWindow):
         self.resize(1000, 680)
         self.setStyleSheet(STYLING)
         
+        # Set Window Icon
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(base_dir, "assets", "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
+        
         self.init_ui()
         self.setup_tray()
         
@@ -937,9 +943,14 @@ class CAMOMainWindow(QMainWindow):
     def setup_tray(self):
         self.tray = QSystemTrayIcon(self)
         
-        # Create a simple default icon if assets/logo.png does not exist
-        logo_path = os.path.join(os.path.dirname(sys.argv[0]), "assets", "logo.png")
-        if os.path.exists(logo_path):
+        # Load the plain white tray icon
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        tray_icon_path = os.path.join(base_dir, "assets", "tray_icon.png")
+        logo_path = os.path.join(base_dir, "assets", "logo.png")
+        
+        if os.path.exists(tray_icon_path):
+            self.tray.setIcon(QIcon(tray_icon_path))
+        elif os.path.exists(logo_path):
             self.tray.setIcon(QIcon(logo_path))
         else:
             # Standard Qt video system icon fallback
