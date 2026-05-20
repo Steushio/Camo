@@ -13,13 +13,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
       - name: Install runtime & SDK
         run: |
-          flatpak install -y flathub org.kde.Platform org.kde.Sdk
+          flatpak install -y --user flathub org.kde.Platform org.kde.Sdk
       - name: Build Flatpak
         run: |
-          flatpak-builder --repo=repo build-dir flatpak/org.camo.Router.json
+          flatpak-builder --repo=repo --user build-dir flatpak/org.camo.Router.json
       - name: Export bundle
         run: |
           flatpak build-export repo build-dir org.camo.Router
