@@ -47,12 +47,26 @@ It is designed as a direct media injection tool for software like OBS Studio, Zo
 
 ## Installation
 
-Run the setup script to install GStreamer packages, V4L2 loopback utilities, setup the Python virtual environment, and adjust user permissions:
+To clone and install CAMO directly from GitHub on a Linux system:
 
+### 1. Clone the Repository
 ```bash
-chmod +x setup_camo.sh run_camo.sh
+git clone https://github.com/Steushio/Camo.git
+cd Camo
+```
+
+### 2. Run Setup Script (Installs system dependencies & Python venv)
+```bash
+chmod +x setup_camo.sh install_camo.sh run_camo.sh
 ./setup_camo.sh
 ```
+
+### 3. Install Desktop Integration (Optional)
+Run the desktop installer script to compile the user-space socket binder and register CAMO in your system launcher application menu:
+```bash
+./install_camo.sh
+```
+Once installed, you can launch CAMO directly from your desktop search/launcher, or simply type `camo` in any terminal!
 
 ---
 
