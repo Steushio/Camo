@@ -36,7 +36,8 @@
                 "install -D -m 644 flatpak/org.camo.Router.desktop /app/share/applications/org.camo.Router.desktop",
                 "install -D -m 644 flatpak/org.camo.Router.metainfo.xml /app/share/metainfo/org.camo.Router.metainfo.xml",
                 "mkdir -p /app/share/icons/hicolor/512x512/apps",
-                "cp camo_app/assets/logo.png /app/share/icons/hicolor/512x512/apps/org.camo.Router.png || true"
+                "mkdir -p /app/share/icons/hicolor/scalable/apps",
+                "cp camo_app/assets/logo.png /app/share/icons/hicolor/scalable/apps/org.camo.Router.png || true"
             ],
             "sources": [
                 {
