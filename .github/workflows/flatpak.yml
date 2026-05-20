@@ -1,0 +1,29 @@
+name: Build Flatpak
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+jobs:
+  build-flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flatpak/flatpak-builder:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install runtime & SDK
+        run: |
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y flathub org.kde.Platform org.kde.Sdk
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --repo=repo build-dir flatpak/org.camo.Router.json
+      - name: Export bundle
+        run: |
+          flatpak build-export repo build-dir org.camo.Router
+          flatpak build-bundle repo camo-router-${{ github.sha }}.flatpak org.camo.Router
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: camo-flatpak
+          path: camo-router-*.flatpak
