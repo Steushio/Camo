@@ -47,21 +47,30 @@ It is designed as a direct media injection tool for software like OBS Studio, Zo
 
 ## Installation
 
-To clone and install CAMO directly from GitHub on a Linux system:
+### Quick One-Line Install
+To automatically download, compile dependencies, configure user-space socket bindings, and install CAMO into your desktop application menu, run the following command in your terminal:
 
-### 1. Clone the Repository
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Steushio/Camo/master/install_camo.sh)"
+```
+
+---
+
+### Manual Installation (From Git Clone)
+
+#### 1. Clone the Repository
 ```bash
 git clone https://github.com/Steushio/Camo.git
 cd Camo
 ```
 
-### 2. Run Setup Script (Installs system dependencies & Python venv)
+#### 2. Run Setup Script (Installs system dependencies & Python venv)
 ```bash
 chmod +x setup_camo.sh install_camo.sh run_camo.sh
 ./setup_camo.sh
 ```
 
-### 3. Install Desktop Integration (Optional)
+#### 3. Install Desktop Integration (Optional)
 Run the desktop installer script to compile the user-space socket binder and register CAMO in your system launcher application menu:
 ```bash
 ./install_camo.sh

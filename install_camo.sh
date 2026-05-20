@@ -10,6 +10,29 @@ set -e
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$DIR"
 
+# Check if we are running inside the repository directory
+if [ ! -f "camo_app/main.py" ]; then
+    echo "CAMO source files not found in the current directory."
+    echo "Cloning CAMO from GitHub to ~/.local/share/camo..."
+    
+    if ! command -v git >/dev/null 2>&1; then
+        echo "Error: git is not installed. Please install git first."
+        exit 1
+    fi
+    
+    INSTALL_DIR="$HOME/.local/share/camo"
+    mkdir -p "$INSTALL_DIR"
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        echo "Updating existing installation in $INSTALL_DIR..."
+        cd "$INSTALL_DIR"
+        git pull
+    else
+        git clone https://github.com/Steushio/Camo.git "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+    fi
+    DIR="$INSTALL_DIR"
+fi
+
 echo "====================================================="
 echo " Installing CAMO Desktop Application"
 echo "====================================================="
