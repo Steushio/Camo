@@ -132,11 +132,27 @@ python -m unittest tests/test_camo.py
 
 ## Windows Compatibility
 
-CAMO is built as a Linux-native application because it relies on Linux-specific kernel and subsystem APIs:
-* **PipeWire**: Used for modern, low-latency GUI virtual camera sourcing.
-* **V4L2 (`v4l2loopback`)**: Used for exposing virtual camera devices (`/dev/video*`) to software.
-* **LD_PRELOAD**: Used to intercept socket connections in user-space for passwordless IP/interface binding.
+CAMO supports running **natively on Windows**! 
 
-### Options for Windows Users:
-1. **WSL2 (Windows Subsystem for Linux)**: You can run CAMO inside WSL2 with WSLg enabled for GUI support. However, sharing the virtual camera device from the WSL2 environment back to Windows host apps (like Chrome/Discord on Windows) is complex because WSL2 runs in a separate virtual machine.
-2. **Native Windows Alternative**: For native Windows use-cases, we recommend using **OBS Studio** directly on Windows. OBS can ingest RTSP streams (via Media Source or VLC Source) and output them to a native Windows virtual camera without requiring any code modifications.
+### How Windows Native Support Works
+* **GStreamer**: Handles low-latency RTSP ingestion, hardware decoding, and local previews natively.
+* **Virtual Webcam**: Instead of Linux-only PipeWire/V4L2, CAMO uses `pyvirtualcam` on Windows to pipe frames directly into existing virtual camera drivers.
+* **GUI Adjustments**: CAMO automatically detects the Windows environment, adapts setting labels, and hides Linux-specific configuration modules.
+
+### Installation for Windows Users:
+
+1. **Install GStreamer**:
+   Download and install both the **MSVC 64-bit Runtime** and **MSVC 64-bit Development** installers from the [Official GStreamer Downloads page](https://gstreamer.freedesktop.org/download/). During installation, ensure the GStreamer `bin` folder is added to your system `PATH`.
+2. **Install Virtual Camera Drivers**:
+   Install **OBS Studio** (v26.0+ contains the built-in virtual camera) or **Unity Capture** to act as the target webcam.
+3. **Install Python Dependencies**:
+   Set up your virtual environment and install the required libraries:
+   ```cmd
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install PySide6 pyvirtualcam
+   ```
+4. **Launch CAMO**:
+   ```cmd
+   python -m camo_app.main
+   ```

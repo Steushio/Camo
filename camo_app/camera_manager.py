@@ -24,6 +24,7 @@ class CameraPipeline(QObject):
         self.pipeline = None
         self.win_id = None
         self.is_running = False
+        self.vcam = None
         
         # Connection status tracking
         self.reconnect_timer = QTimer(self)
@@ -69,8 +70,8 @@ class CameraPipeline(QObject):
         # Preview output (autovideosink dynamically selects the best display sink)
         pipeline_str += "t. ! queue ! videoconvert ! autovideosink name=preview_sink "
         
-        # PipeWire virtual camera output
-        if enable_pipewire:
+        # PipeWire virtual camera output (Linux only)
+        if enable_pipewire and os.name != 'nt':
             cam_name = self.config.get("name", "CAMO Cam")
             pipeline_str += (
                 f"t. ! queue ! videoconvert ! video/x-raw,format=I420 ! "
@@ -79,12 +80,18 @@ class CameraPipeline(QObject):
                 f"client-name=\"{cam_name}\" "
             )
             
-        # V4L2 virtual camera output
-        if enable_v4l2 and v4l2_device:
-            pipeline_str += (
-                f"t. ! queue ! videoconvert ! video/x-raw,format=YUY2 ! "
-                f"v4l2sink device={v4l2_device} "
-            )
+        # Virtual webcam output (Linux: V4L2, Windows: appsink to pyvirtualcam)
+        if enable_v4l2:
+            if os.name == 'nt':
+                pipeline_str += (
+                    "t. ! queue ! videoconvert ! video/x-raw,format=RGB ! "
+                    "appsink name=vcam_sink emit-signals=true max-buffers=1 drop=true "
+                )
+            elif v4l2_device:
+                pipeline_str += (
+                    f"t. ! queue ! videoconvert ! video/x-raw,format=YUY2 ! "
+                    f"v4l2sink device={v4l2_device} "
+                )
             
         return pipeline_str
 
@@ -111,6 +118,15 @@ class CameraPipeline(QObject):
             bus = self.pipeline.get_bus()
             bus.set_sync_handler(self.on_sync_message)
             
+            # Setup Windows virtual camera appsink callback
+            if os.name == 'nt':
+                appsink = self.pipeline.get_by_name("vcam_sink")
+                if appsink:
+                    # Reset error flag
+                    if hasattr(self, "_vcam_error_logged"):
+                        delattr(self, "_vcam_error_logged")
+                    appsink.connect("new-sample", self.on_new_sample)
+            
             # Start state
             self.pipeline.set_state(Gst.State.PLAYING)
             self.is_running = True
@@ -133,8 +149,57 @@ class CameraPipeline(QObject):
             self.pipeline.set_state(Gst.State.NULL)
             self.pipeline = None
             
+        # Clean up Windows virtual camera
+        if self.vcam:
+            try:
+                self.vcam.close()
+            except Exception:
+                pass
+            self.vcam = None
+            
         self.is_running = False
         self.status_changed.emit(self.cam_id, "Stopped")
+
+    def on_new_sample(self, appsink):
+        sample = appsink.emit("pull-sample")
+        if not sample:
+            return Gst.FlowReturn.OK
+            
+        buffer = sample.get_buffer()
+        caps = sample.get_caps()
+        struct = caps.get_structure(0)
+        width = struct.get_value("width")
+        height = struct.get_value("height")
+        
+        success, map_info = buffer.map(Gst.MapFlags.READ)
+        if success:
+            try:
+                data = map_info.data
+                if self.vcam is None:
+                    import pyvirtualcam
+                    self.vcam = pyvirtualcam.Camera(
+                        width=width,
+                        height=height,
+                        fps=30,
+                        fmt=pyvirtualcam.PixelFormat.RGB
+                    )
+                    print(f"CAMO: Initialized Windows Virtual Camera ({width}x{height})")
+                
+                self.vcam.send(data)
+                self.vcam.sleep_until_next_frame()
+            except Exception as e:
+                if not hasattr(self, "_vcam_error_logged"):
+                    self._vcam_error_logged = True
+                    print(f"CAMO Windows Virtual Camera Error: {e}")
+                    self.error_occurred.emit(
+                        self.cam_id,
+                        "Failed to stream to Windows Virtual Camera. "
+                        "Please ensure OBS Studio (v26.0+) or Unity Capture is installed."
+                    )
+            finally:
+                buffer.unmap(map_info)
+                
+        return Gst.FlowReturn.OK
         
         # Tear down any temporary network routes if not reconnecting
         if not is_reconnecting:

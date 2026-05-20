@@ -204,8 +204,13 @@ class AddEditCameraDialog(QDialog):
         devices = list_video_devices()
         for d in devices:
             if d["is_loopback"]:
-                self.device_combo.addItem(f"{d['name']} ({d['device']})", d["device"])
-        form.addRow("V4L2 Virtual Device:", self.device_combo)
+                if os.name == 'nt':
+                    self.device_combo.addItem(d['name'], d['device'])
+                else:
+                    self.device_combo.addItem(f"{d['name']} ({d['device']})", d["device"])
+        
+        device_label = "Virtual Camera Target:" if os.name == 'nt' else "V4L2 Virtual Device:"
+        form.addRow(device_label, self.device_combo)
 
         # GPU acceleration selection
         self.hw_combo = QComboBox()
@@ -225,10 +230,15 @@ class AddEditCameraDialog(QDialog):
 
         # Output options
         self.pw_check = QCheckBox("Expose as Native PipeWire Camera")
-        self.pw_check.setChecked(True)
-        form.addRow("", self.pw_check)
+        self.pw_check.setChecked(os.name != 'nt')
+        if os.name == 'nt':
+            self.pw_check.setEnabled(False)
+            self.pw_check.setVisible(False)
+        else:
+            form.addRow("", self.pw_check)
 
-        self.v4l2_check = QCheckBox("Expose as Legacy V4L2 Webcam")
+        v4l2_label = "Expose as Windows Virtual Camera" if os.name == 'nt' else "Expose as Legacy V4L2 Webcam"
+        self.v4l2_check = QCheckBox(v4l2_label)
         self.v4l2_check.setChecked(True)
         form.addRow("", self.v4l2_check)
 
@@ -488,8 +498,15 @@ class CAMOMainWindow(QMainWindow):
         sidebar_layout.addStretch()
         
         # System Tray indicator in sidebar
-        v4l2_status = QLabel("v4l2loopback: LOADED" if is_v4l2loopback_loaded() else "v4l2loopback: MISSING")
-        v4l2_status.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold; margin-left: 20px;" if is_v4l2loopback_loaded() else "color: #F44336; font-size: 11px; font-weight: bold; margin-left: 20px;")
+        if os.name == 'nt':
+            status_text = "OS: Windows (Native)"
+            status_style = "color: #00BCD4; font-size: 11px; font-weight: bold; margin-left: 20px;"
+        else:
+            status_text = "v4l2loopback: LOADED" if is_v4l2loopback_loaded() else "v4l2loopback: MISSING"
+            status_style = "color: #4CAF50; font-size: 11px; font-weight: bold; margin-left: 20px;" if is_v4l2loopback_loaded() else "color: #F44336; font-size: 11px; font-weight: bold; margin-left: 20px;"
+        
+        v4l2_status = QLabel(status_text)
+        v4l2_status.setStyleSheet(status_style)
         sidebar_layout.addWidget(v4l2_status)
         
         main_layout.addWidget(sidebar, stretch=1)
@@ -759,28 +776,30 @@ class CAMOMainWindow(QMainWindow):
         form_layout.addRow("Available Adapters:", interfaces_area)
         layout.addWidget(form)
 
-        # Load kernel v4l2loopback loader helper inside Network page for visibility
-        v4l2_panel = QFrame()
-        v4l2_panel.setStyleSheet("background-color: #1A1C29; border: 1px solid #23273A; border-radius: 8px;")
-        v4l2_layout = QVBoxLayout(v4l2_panel)
-        v4l2_layout.setContentsMargins(20, 20, 20, 20)
-        v4l2_layout.setSpacing(12)
-        
-        v4l2_title = QLabel("Virtual Camera Driver (V4L2)")
-        v4l2_title.setStyleSheet("font-size: 14px; font-weight: bold; border: none; background-color: transparent;")
-        v4l2_layout.addWidget(v4l2_title)
-        
-        self.v4l2_status_info = QLabel("Status: LOADED" if is_v4l2loopback_loaded() else "Status: MISSING (V4L2 legacy outputs will not be available)")
-        self.v4l2_status_info.setStyleSheet("color: #4CAF50; border: none; background-color: transparent;" if is_v4l2loopback_loaded() else "color: #F44336; border: none; background-color: transparent;")
-        v4l2_layout.addWidget(self.v4l2_status_info)
-        
-        self.v4l2_load_btn = QPushButton("Load v4l2loopback Driver (Requires authentication)")
-        self.v4l2_load_btn.setProperty("class", "PrimaryButton")
-        self.v4l2_load_btn.setEnabled(not is_v4l2loopback_loaded())
-        self.v4l2_load_btn.clicked.connect(self.load_loopback_driver)
-        v4l2_layout.addWidget(self.v4l2_load_btn)
-        
-        layout.addWidget(v4l2_panel)
+        # Load kernel v4l2loopback loader helper inside Network page for visibility (Linux only)
+        if os.name != 'nt':
+            v4l2_panel = QFrame()
+            v4l2_panel.setStyleSheet("background-color: #1A1C29; border: 1px solid #23273A; border-radius: 8px;")
+            v4l2_layout = QVBoxLayout(v4l2_panel)
+            v4l2_layout.setContentsMargins(20, 20, 20, 20)
+            v4l2_layout.setSpacing(12)
+            
+            v4l2_title = QLabel("Virtual Camera Driver (V4L2)")
+            v4l2_title.setStyleSheet("font-size: 14px; font-weight: bold; border: none; background-color: transparent;")
+            v4l2_layout.addWidget(v4l2_title)
+            
+            self.v4l2_status_info = QLabel("Status: LOADED" if is_v4l2loopback_loaded() else "Status: MISSING (V4L2 legacy outputs will not be available)")
+            self.v4l2_status_info.setStyleSheet("color: #4CAF50; border: none; background-color: transparent;" if is_v4l2loopback_loaded() else "color: #F44336; border: none; background-color: transparent;")
+            v4l2_layout.addWidget(self.v4l2_status_info)
+            
+            self.v4l2_load_btn = QPushButton("Load v4l2loopback Driver (Requires authentication)")
+            self.v4l2_load_btn.setProperty("class", "PrimaryButton")
+            self.v4l2_load_btn.setEnabled(not is_v4l2loopback_loaded())
+            self.v4l2_load_btn.clicked.connect(self.load_loopback_driver)
+            v4l2_layout.addWidget(self.v4l2_load_btn)
+            
+            layout.addWidget(v4l2_panel)
+            
         layout.addStretch()
         self.stack.addWidget(page)
 

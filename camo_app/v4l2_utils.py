@@ -8,6 +8,12 @@ def list_video_devices():
     Returns:
         list of dicts: [{"device": "/dev/video10", "name": "CAMO Cam 1", "is_loopback": True}, ...]
     """
+    if os.name == 'nt':
+        return [
+            {"device": "OBS Virtual Camera", "name": "OBS Virtual Camera", "is_loopback": True},
+            {"device": "Unity Capture", "name": "Unity Capture", "is_loopback": True}
+        ]
+
     devices = []
     video_paths = glob.glob('/dev/video*')
     # Sort numerically (video0, video1, video10, etc.)
