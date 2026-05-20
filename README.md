@@ -127,3 +127,16 @@ Run the test suite to verify configuration bindings, network parser, and pipelin
 source .venv/bin/activate
 python -m unittest tests/test_camo.py
 ```
+
+---
+
+## Windows Compatibility
+
+CAMO is built as a Linux-native application because it relies on Linux-specific kernel and subsystem APIs:
+* **PipeWire**: Used for modern, low-latency GUI virtual camera sourcing.
+* **V4L2 (`v4l2loopback`)**: Used for exposing virtual camera devices (`/dev/video*`) to software.
+* **LD_PRELOAD**: Used to intercept socket connections in user-space for passwordless IP/interface binding.
+
+### Options for Windows Users:
+1. **WSL2 (Windows Subsystem for Linux)**: You can run CAMO inside WSL2 with WSLg enabled for GUI support. However, sharing the virtual camera device from the WSL2 environment back to Windows host apps (like Chrome/Discord on Windows) is complex because WSL2 runs in a separate virtual machine.
+2. **Native Windows Alternative**: For native Windows use-cases, we recommend using **OBS Studio** directly on Windows. OBS can ingest RTSP streams (via Media Source or VLC Source) and output them to a native Windows virtual camera without requiring any code modifications.
