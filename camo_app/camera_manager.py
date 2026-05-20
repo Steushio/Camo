@@ -28,7 +28,8 @@ class CameraPipeline(QObject):
         # Connection status tracking
         self.reconnect_timer = QTimer(self)
         self.reconnect_timer.setSingleShot(True)
-        self.reconnect_timer.timeout.connect(self.start)
+        self.reconnect_timer.timeout.connect(self.reconnect_start)
+        self.is_reconnecting = False
         
         # Bus polling timer
         self.bus_timer = QTimer(self)
@@ -65,8 +66,8 @@ class CameraPipeline(QObject):
             f"rtph264depay ! h264parse ! {dec_element} ! tee name=t "
         )
         
-        # Preview output (OpenGL glimagesink supports zero-copy rendering)
-        pipeline_str += "t. ! queue ! videoconvert ! glimagesink name=preview_sink "
+        # Preview output (autovideosink dynamically selects the best display sink)
+        pipeline_str += "t. ! queue ! videoconvert ! autovideosink name=preview_sink "
         
         # PipeWire virtual camera output
         if enable_pipewire:
@@ -87,11 +88,18 @@ class CameraPipeline(QObject):
             
         return pipeline_str
 
+    def reconnect_start(self):
+        self.is_reconnecting = True
+        self.start()
+        self.is_reconnecting = False
+
     def start(self):
-        self.stop()
+        is_reconnecting = getattr(self, "is_reconnecting", False)
+        self.stop(is_reconnecting=is_reconnecting)
         
-        # Apply network interface routing if set
-        self.apply_network_routing()
+        # Apply network interface routing if set and we are not reconnecting
+        if not is_reconnecting:
+            self.apply_network_routing()
         
         pipeline_str = self.get_pipeline_string()
         print(f"Starting GStreamer pipeline for {self.cam_id}:\n{pipeline_str}")
@@ -116,9 +124,10 @@ class CameraPipeline(QObject):
             self.status_changed.emit(self.cam_id, "Error")
             self.error_occurred.emit(self.cam_id, f"Failed to initialize GStreamer: {str(e)}")
 
-    def stop(self):
+    def stop(self, is_reconnecting=False):
         self.bus_timer.stop()
-        self.reconnect_timer.stop()
+        if not is_reconnecting:
+            self.reconnect_timer.stop()
         
         if self.pipeline:
             self.pipeline.set_state(Gst.State.NULL)
@@ -127,8 +136,9 @@ class CameraPipeline(QObject):
         self.is_running = False
         self.status_changed.emit(self.cam_id, "Stopped")
         
-        # Tear down any temporary network routes
-        self.remove_network_routing()
+        # Tear down any temporary network routes if not reconnecting
+        if not is_reconnecting:
+            self.remove_network_routing()
 
     def on_sync_message(self, bus, message):
         struct = message.get_structure()
@@ -153,7 +163,7 @@ class CameraPipeline(QObject):
         bus = self.pipeline.get_bus()
         while True:
             # Non-blocking poll of bus messages
-            msg = bus.pop_filtered(Gst.MessageType.ANY, 0)
+            msg = bus.pop_filtered(Gst.MessageType.ANY)
             if not msg:
                 break
                 
@@ -161,9 +171,12 @@ class CameraPipeline(QObject):
             if msg_type == Gst.MessageType.ERROR:
                 err, debug_info = msg.parse_error()
                 error_msg = err.message
+                print(f"GStreamer Pipeline Error for {self.cam_id}: {error_msg}")
+                if debug_info:
+                    print(f"GStreamer Debug Info: {debug_info}")
                 self.error_occurred.emit(self.cam_id, error_msg)
                 self.status_changed.emit(self.cam_id, "Connection Lost")
-                self.stop()
+                self.stop(is_reconnecting=True)
                 # Attempt auto-reconnection in 5 seconds
                 self.reconnect_timer.start(5000)
                 break
@@ -178,9 +191,22 @@ class CameraPipeline(QObject):
     def apply_network_routing(self):
         """
         Forces traffic to the RTSP camera IP to route via the selected network interface.
-        Uses policykit 'ip route' modification.
         """
         bind_ip = self.config.get("network_bind", "default")
+        if bind_ip == "default":
+            manager = self.parent()
+            if manager:
+                bind_ip = manager.get_settings().get("global_network_bind", "default")
+
+        # If user-space preload binding is active, use it (no sudo required)
+        if os.environ.get("CAMO_PRELOAD_ACTIVE") == "1":
+            if bind_ip and bind_ip != "default":
+                os.environ["BIND_ADDR"] = bind_ip
+                print(f"CAMO: Setting socket bind address to {bind_ip} via preload shim.")
+            else:
+                os.environ.pop("BIND_ADDR", None)
+            return
+
         if bind_ip == "default":
             return
             
@@ -207,15 +233,31 @@ class CameraPipeline(QObject):
             if target_iface:
                 # Add temporary route using pkexec
                 cmd = ["pkexec", "ip", "route", "replace", camera_ip, "dev", target_iface, "src", bind_ip]
-                subprocess.run(cmd, capture_output=True)
-                self.config["_active_route_ip"] = camera_ip
+                result = subprocess.run(cmd, capture_output=True)
+                if result.returncode == 0:
+                    self.config["_active_route_ip"] = camera_ip
+                    print(f"CAMO: Successfully applied static route for {camera_ip} via {target_iface}")
+                else:
+                    print(f"CAMO: Network routing override failed (exit code {result.returncode}). Falling back to default route to prevent password spam.")
+                    # Temporarily disable network bind for this camera session so we do not prompt again
+                    self.config["network_bind"] = "default"
         except Exception as e:
             print(f"Failed to set static network route: {e}")
 
     def remove_network_routing(self):
         """
-        Cleans up the temporary route added on startup.
+        Cleans up network routing/binding.
         """
+        if os.environ.get("CAMO_PRELOAD_ACTIVE") == "1":
+            manager = self.parent()
+            if manager:
+                global_bind = manager.get_settings().get("global_network_bind", "default")
+                if global_bind and global_bind != "default":
+                    os.environ["BIND_ADDR"] = global_bind
+                    return
+            os.environ.pop("BIND_ADDR", None)
+            return
+
         active_route_ip = self.config.get("_active_route_ip")
         if active_route_ip:
             try:
@@ -238,7 +280,9 @@ class CameraManager(QObject):
                 "start_minimized": False,
                 "minimize_to_tray": True,
                 "force_gpu": False,
-                "hw_mode": "auto"
+                "hw_mode": "auto",
+                "global_network_bind": "default",
+                "preferred_ip_family": "both"
             }
         }
         self.active_pipelines = {}
@@ -255,6 +299,15 @@ class CameraManager(QObject):
             # Create config directory if not exists
             os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
             self.save_config()
+
+        # Initialize BIND_ADDR for the preloaded socket shim
+        if os.environ.get("CAMO_PRELOAD_ACTIVE") == "1":
+            global_bind = self.get_settings().get("global_network_bind", "default")
+            if global_bind and global_bind != "default":
+                os.environ["BIND_ADDR"] = global_bind
+                print(f"CAMO Preload: Initialized BIND_ADDR to {global_bind}")
+            else:
+                os.environ.pop("BIND_ADDR", None)
 
     def save_config(self):
         try:
@@ -273,7 +326,16 @@ class CameraManager(QObject):
         self.config["settings"].update(new_settings)
         self.save_config()
 
-    def add_camera(self, name, rtsp_url, device, hw_mode="auto", network_bind="default", enable_pipewire=True, enable_v4l2=True):
+        # Dynamically update BIND_ADDR if the global bind setting changed
+        if "global_network_bind" in new_settings and os.environ.get("CAMO_PRELOAD_ACTIVE") == "1":
+            global_bind = new_settings["global_network_bind"]
+            if global_bind and global_bind != "default":
+                os.environ["BIND_ADDR"] = global_bind
+                print(f"CAMO Preload: Updated BIND_ADDR to {global_bind}")
+            else:
+                os.environ.pop("BIND_ADDR", None)
+
+    def add_camera(self, name, rtsp_url, device, hw_mode="auto", network_bind="default", enable_pipewire=True, enable_v4l2=True, autostart=False):
         cam_id = f"cam_{int(QTimer.remainingTime(QTimer())) + len(self.config['cameras']) + 1}"
         camera = {
             "id": cam_id,
@@ -282,6 +344,7 @@ class CameraManager(QObject):
             "device": device,
             "hw_mode": hw_mode,
             "network_bind": network_bind,
+            "autostart": autostart,
             "enable_pipewire": enable_pipewire,
             "enable_v4l2": enable_v4l2,
             "enabled": False
@@ -290,7 +353,7 @@ class CameraManager(QObject):
         self.save_config()
         return cam_id
 
-    def edit_camera(self, cam_id, name, rtsp_url, device, hw_mode, network_bind, enable_pipewire, enable_v4l2):
+    def edit_camera(self, cam_id, name, rtsp_url, device, hw_mode, network_bind, enable_pipewire, enable_v4l2, autostart=False):
         for cam in self.config["cameras"]:
             if cam["id"] == cam_id:
                 was_running = self.is_streaming(cam_id)
@@ -303,6 +366,7 @@ class CameraManager(QObject):
                     "device": device,
                     "hw_mode": hw_mode,
                     "network_bind": network_bind,
+                    "autostart": autostart,
                     "enable_pipewire": enable_pipewire,
                     "enable_v4l2": enable_v4l2
                 })

@@ -70,12 +70,13 @@ def load_v4l2loopback(devices_count=4, start_nr=10):
     video_nr_list = ",".join(str(start_nr + i) for i in range(devices_count))
     card_labels = ",".join(f'"CAMO Virtual Cam {i+1}"' for i in range(devices_count))
     
+    exclusive_caps_list = ",".join("1" for _ in range(devices_count))
     cmd = [
         "pkexec", "modprobe", "v4l2loopback",
         f"devices={devices_count}",
         f"video_nr={video_nr_list}",
         f"card_label={card_labels}",
-        "exclusive_caps=1"
+        f"exclusive_caps={exclusive_caps_list}"
     ]
     
     try:

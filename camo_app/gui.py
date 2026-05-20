@@ -166,7 +166,6 @@ class GstVideoOverlayWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
-        self.setAttribute(Qt.WidgetAttribute.WA_DontCreateSandboxPack, True)
         self.setStyleSheet("background-color: #06070B; border: 1px solid #23273A; border-radius: 4px;")
 
 
@@ -222,7 +221,7 @@ class AddEditCameraDialog(QDialog):
         interfaces = get_network_interfaces()
         for iface in interfaces:
             self.bind_combo.addItem(f"{iface['name']} - {iface['ip']}", iface["ip"])
-        form.addRow("Local Network Bind:", self.bind_combo)
+        form.addRow("Local Network Bind (Overrides Global):", self.bind_combo)
 
         # Output options
         self.pw_check = QCheckBox("Expose as Native PipeWire Camera")
@@ -232,6 +231,10 @@ class AddEditCameraDialog(QDialog):
         self.v4l2_check = QCheckBox("Expose as Legacy V4L2 Webcam")
         self.v4l2_check.setChecked(True)
         form.addRow("", self.v4l2_check)
+
+        self.autostart_check = QCheckBox("Start Stream Automatically on App Launch")
+        self.autostart_check.setChecked(False)
+        form.addRow("", self.autostart_check)
 
         layout.addLayout(form)
 
@@ -257,6 +260,7 @@ class AddEditCameraDialog(QDialog):
                 
             self.pw_check.setChecked(self.camera_data.get("enable_pipewire", True))
             self.v4l2_check.setChecked(self.camera_data.get("enable_v4l2", True))
+            self.autostart_check.setChecked(self.camera_data.get("autostart", False))
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -280,6 +284,7 @@ class AddEditCameraDialog(QDialog):
             "device": self.device_combo.currentData(),
             "hw_mode": self.hw_combo.currentData(),
             "network_bind": self.bind_combo.currentData(),
+            "autostart": self.autostart_check.isChecked(),
             "enable_pipewire": self.pw_check.isChecked(),
             "enable_v4l2": self.v4l2_check.isChecked()
         }
@@ -409,6 +414,7 @@ class CAMOMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.manager = CameraManager()
+        self.camera_cards = []
         self.setWindowTitle("CAMO - Low Latency RTSP Router")
         self.resize(1000, 680)
         self.setStyleSheet(STYLING)
@@ -421,6 +427,9 @@ class CAMOMainWindow(QMainWindow):
             self.hide()
         else:
             self.show()
+
+        # Automatically start camera streams that have autostart enabled
+        self.start_autostart_streams()
 
     def init_ui(self):
         # Central Main Widget
@@ -555,6 +564,7 @@ class CAMOMainWindow(QMainWindow):
             if widget:
                 widget.setParent(None)
 
+        self.camera_cards = []
         cameras = self.manager.get_cameras()
         if not cameras:
             no_cam_label = QLabel("No registered cameras. Please visit 'Manage Cameras' tab to add streams.")
@@ -565,6 +575,7 @@ class CAMOMainWindow(QMainWindow):
         row, col = 0, 0
         for cam in cameras:
             card = CameraCard(cam, self.manager, self)
+            self.camera_cards.append(card)
             self.grid_layout.addWidget(card, row, col)
             col += 1
             if col > 1: # 2 columns grid
@@ -649,6 +660,15 @@ class CAMOMainWindow(QMainWindow):
             
             item_layout.addSpacing(20)
             
+            # Auto Start Checkbox
+            autostart_chk = QCheckBox("Auto Start")
+            autostart_chk.setStyleSheet("border: none; background: transparent; color: #ffffff;")
+            autostart_chk.setChecked(cam.get("autostart", False))
+            autostart_chk.toggled.connect(lambda checked, c_id=cam["id"]: self.toggle_camera_autostart(c_id, checked))
+            item_layout.addWidget(autostart_chk)
+            
+            item_layout.addSpacing(15)
+            
             # Action Buttons
             edit_btn = QPushButton("Edit")
             edit_btn.setProperty("class", "SecondaryButton")
@@ -664,6 +684,14 @@ class CAMOMainWindow(QMainWindow):
             self.list_layout.addWidget(item)
             
         self.list_layout.addStretch()
+
+    def toggle_camera_autostart(self, cam_id, checked):
+        for cam in self.manager.config["cameras"]:
+            if cam["id"] == cam_id:
+                cam["autostart"] = checked
+                break
+        self.manager.save_config()
+        self.refresh_dashboard()
 
     def create_network_view(self):
         page = QWidget()
@@ -690,7 +718,32 @@ class CAMOMainWindow(QMainWindow):
         self.ip_family_combo.addItem("IPv4 and IPv6 (Default)", "both")
         self.ip_family_combo.addItem("IPv4 Only", "ipv4")
         self.ip_family_combo.addItem("IPv6 Only", "ipv6")
+        
+        # Load saved IP family setting
+        saved_family = self.manager.get_settings().get("preferred_ip_family", "both")
+        idx = self.ip_family_combo.findData(saved_family)
+        if idx >= 0:
+            self.ip_family_combo.setCurrentIndex(idx)
+        self.ip_family_combo.currentIndexChanged.connect(self.on_ip_family_changed)
+        
         form_layout.addRow("Preferred IP Family:", self.ip_family_combo)
+
+        # Global Network Interface binding
+        self.global_bind_combo = QComboBox()
+        self.global_bind_combo.addItem("Default Route (Global Fallback)", "default")
+        
+        interfaces = get_network_interfaces()
+        for iface in interfaces:
+            self.global_bind_combo.addItem(f"{iface['name']} - {iface['ip']}", iface["ip"])
+            
+        # Load saved global bind IP setting
+        saved_bind = self.manager.get_settings().get("global_network_bind", "default")
+        idx = self.global_bind_combo.findData(saved_bind)
+        if idx >= 0:
+            self.global_bind_combo.setCurrentIndex(idx)
+        self.global_bind_combo.currentIndexChanged.connect(self.on_global_bind_changed)
+        
+        form_layout.addRow("Bind to IP (Global):", self.global_bind_combo)
 
         # Show current detected local network interfaces
         interfaces_area = QVBoxLayout()
@@ -740,6 +793,14 @@ class CAMOMainWindow(QMainWindow):
             self.v4l2_load_btn.setEnabled(False)
         else:
             QMessageBox.critical(self, "Error", f"Could not load v4l2loopback:\n{msg}")
+
+    def on_ip_family_changed(self):
+        new_family = self.ip_family_combo.currentData()
+        self.manager.update_settings({"preferred_ip_family": new_family})
+
+    def on_global_bind_changed(self):
+        new_bind = self.global_bind_combo.currentData()
+        self.manager.update_settings({"global_network_bind": new_bind})
 
     def create_system_view(self):
         page = QWidget()
@@ -806,7 +867,8 @@ class CAMOMainWindow(QMainWindow):
                     hw_mode=data["hw_mode"],
                     network_bind=data["network_bind"],
                     enable_pipewire=data["enable_pipewire"],
-                    enable_v4l2=data["enable_v4l2"]
+                    enable_v4l2=data["enable_v4l2"],
+                    autostart=data["autostart"]
                 )
                 self.refresh_camera_list()
                 self.refresh_dashboard()
@@ -823,7 +885,8 @@ class CAMOMainWindow(QMainWindow):
                 hw_mode=data["hw_mode"],
                 network_bind=data["network_bind"],
                 enable_pipewire=data["enable_pipewire"],
-                enable_v4l2=data["enable_v4l2"]
+                enable_v4l2=data["enable_v4l2"],
+                autostart=data["autostart"]
             )
             self.refresh_camera_list()
             self.refresh_dashboard()
@@ -836,12 +899,20 @@ class CAMOMainWindow(QMainWindow):
             self.refresh_dashboard()
 
     def start_all_pipelines(self):
-        self.manager.start_all()
-        self.refresh_dashboard()
+        for card in self.camera_cards:
+            if not self.manager.is_streaming(card.camera["id"]):
+                card.toggle_stream()
 
     def stop_all_pipelines(self):
-        self.manager.stop_all()
-        self.refresh_dashboard()
+        for card in self.camera_cards:
+            if self.manager.is_streaming(card.camera["id"]):
+                card.toggle_stream()
+
+    def start_autostart_streams(self):
+        for card in self.camera_cards:
+            if card.camera.get("autostart", False):
+                if not self.manager.is_streaming(card.camera["id"]):
+                    card.toggle_stream()
 
     # System Tray Integration
     def setup_tray(self):
