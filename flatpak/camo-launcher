@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Flatpak Entrypoint Launcher Script
+# ==============================================================================
+
+# Run python module from the installed Flatpak share folder
+python3 -m camo_app.main "$@"

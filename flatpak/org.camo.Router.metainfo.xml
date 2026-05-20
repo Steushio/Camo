@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.camo.Router</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>CAMO</name>
+  <summary>Ultra Low Latency RTSP Virtual Camera Router</summary>
+  
+  <description>
+    <p>
+      CAMO is a high-performance, Linux-native media routing layer inspired by professional IP video routers. It ingests RTSP IP camera streams with near-zero latency, decodes them using GPU hardware acceleration, and routes frames directly to video pipelines.
+    </p>
+    <p>
+      CAMO exposes virtual webcams natively as modern PipeWire video nodes and legacy V4L2 webcams, allowing any application (OBS Studio, Zoom, Discord, Chrome) to ingest the streams without buffering or latency.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">org.camo.Router.desktop</launchable>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+  </categories>
+  <provides>
+    <binary>camo-launcher</binary>
+  </provides>
+</component>

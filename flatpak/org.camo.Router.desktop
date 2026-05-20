@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=CAMO
+Comment=Ultra Low Latency GStreamer & PipeWire Virtual Camera Router
+Exec=camo-launcher
+Icon=org.camo.Router
+Terminal=false
+Categories=AudioVideo;Video;
+Keywords=camera;rtsp;router;video;virtual;webcam;splitcam;obs;
+X-GNOME-Autostart-enabled=true
