@@ -16,10 +16,10 @@ jobs:
           flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
       - name: Install runtime & SDK
         run: |
-          flatpak install -y --user flathub org.kde.Platform org.kde.Sdk
+          flatpak install -y --user flathub org.kde.Platform//6.6 org.kde.Sdk//6.6
       - name: Build Flatpak
         run: |
-          flatpak-builder --repo=repo --user build-dir flatpak/org.camo.Router.json
+          flatpak-builder --repo=repo --user --force-clean build-dir flatpak/org.camo.Router.json
       - name: Export bundle
         run: |
           flatpak build-export repo build-dir org.camo.Router
