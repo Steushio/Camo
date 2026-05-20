@@ -7,7 +7,7 @@ jobs:
   build-flatpak:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/flatpak/flatpak-builder:latest
+      image: flatpak/flatpak-builder:latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
