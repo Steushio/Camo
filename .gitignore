@@ -1,2 +1,7 @@
 OnvifDeviceManager-main/
 obs-studio-master/
+__pycache__/
+*.pyc
+.venv/
+camo_app/bind_shim.so
+camo_app/assets/tray_icon old.png
