@@ -102,10 +102,41 @@ pip install --upgrade pip
 pip install PySide6
 
 echo "====================================================="
+echo " Configuring v4l2loopback Virtual Camera Driver"
+echo "====================================================="
+
+# 1. Configure module options
+echo "Writing module options to /etc/modprobe.d/v4l2loopback.conf..."
+sudo mkdir -p /etc/modprobe.d
+echo 'options v4l2loopback devices=4 video_nr=10,11,12,13 card_label="CAMO Virtual Cam 1","CAMO Virtual Cam 2","CAMO Virtual Cam 3","CAMO Virtual Cam 4" exclusive_caps=1,1,1,1' | sudo tee /etc/modprobe.d/v4l2loopback.conf > /dev/null
+
+# 2. Configure auto-load at boot
+echo "Configuring automatic driver load at boot in /etc/modules-load.d/v4l2loopback.conf..."
+sudo mkdir -p /etc/modules-load.d
+echo "v4l2loopback" | sudo tee /etc/modules-load.d/v4l2loopback.conf > /dev/null
+
+# 3. Configure passwordless sudoers rule for video group
+echo "Writing passwordless sudo rule to /etc/sudoers.d/camo-v4l2..."
+if [ -d "/etc/sudoers.d" ]; then
+    echo "%video ALL=(ALL) NOPASSWD: /sbin/modprobe v4l2loopback *, /sbin/rmmod v4l2loopback, /usr/sbin/modprobe v4l2loopback *, /usr/sbin/rmmod v4l2loopback" | sudo tee /etc/sudoers.d/camo-v4l2 > /dev/null
+    sudo chmod 0440 /etc/sudoers.d/camo-v4l2
+else
+    echo "Warning: /etc/sudoers.d does not exist on this system. Manual passwordless sudo loading will not be configured."
+fi
+
+# 4. Load the driver immediately so it's active right now
+echo "Loading v4l2loopback module immediately..."
+sudo modprobe -r v4l2loopback 2>/dev/null || true
+if ! sudo modprobe v4l2loopback; then
+    echo "Warning: Could not load v4l2loopback module immediately (Secure Boot or DKMS issue?). It will attempt to load at boot."
+else
+    echo "v4l2loopback module loaded successfully with CAMO options!"
+fi
+
+echo "====================================================="
 echo " CAMO Installation Complete!"
 echo "====================================================="
-echo "1. To load the virtual camera kernel module, run:"
-echo "   sudo modprobe v4l2loopback exclusive_caps=1"
+echo "1. The v4l2loopback driver has been loaded and configured to start at boot."
 echo "2. Run CAMO using:"
 echo "   ./run_camo.sh"
 echo "====================================================="

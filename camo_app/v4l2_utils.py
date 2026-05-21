@@ -68,16 +68,32 @@ def is_v4l2loopback_loaded():
 
 def load_v4l2loopback(devices_count=4, start_nr=10):
     """
-    Uses PolicyKit (pkexec) to load the v4l2loopback module with the correct parameters.
+    Loads the v4l2loopback module with the correct parameters, trying passwordless sudo first, then pkexec.
     """
     if os.name == 'nt':
         return False, "Not supported on Windows"
         
     video_nr_list = ",".join(str(start_nr + i) for i in range(devices_count))
     card_labels = ",".join(f'"CAMO Virtual Cam {i+1}"' for i in range(devices_count))
-    
     exclusive_caps_list = ",".join("1" for _ in range(devices_count))
-    cmd = [
+    
+    # Try non-interactive (passwordless) sudo first
+    sudo_cmd = [
+        "sudo", "-n", "modprobe", "v4l2loopback",
+        f"devices={devices_count}",
+        f"video_nr={video_nr_list}",
+        f"card_label={card_labels}",
+        f"exclusive_caps={exclusive_caps_list}"
+    ]
+    try:
+        result = subprocess.run(sudo_cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            return True, "v4l2loopback module loaded successfully (passwordless)"
+    except Exception:
+        pass
+
+    # Fallback to PolicyKit (pkexec) which will prompt for credentials
+    pkexec_cmd = [
         "pkexec", "modprobe", "v4l2loopback",
         f"devices={devices_count}",
         f"video_nr={video_nr_list}",
@@ -93,7 +109,7 @@ def load_v4l2loopback(devices_count=4, start_nr=10):
         
     try:
         # Load kernel module
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(pkexec_cmd, capture_output=True, text=True)
         if result.returncode == 0:
             return True, "v4l2loopback module loaded successfully"
         else:
@@ -103,10 +119,20 @@ def load_v4l2loopback(devices_count=4, start_nr=10):
         
 def unload_v4l2loopback():
     """
-    Unloads the v4l2loopback module.
+    Unloads the v4l2loopback module, trying passwordless sudo first, then pkexec.
     """
     if os.name == 'nt':
         return False
+        
+    # Try non-interactive (passwordless) sudo first
+    try:
+        result = subprocess.run(["sudo", "-n", "rmmod", "v4l2loopback"], capture_output=True, text=True)
+        if result.returncode == 0:
+            return True
+    except Exception:
+        pass
+        
+    # Fallback to PolicyKit
     cmd = ["pkexec", "rmmod", "v4l2loopback"]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
