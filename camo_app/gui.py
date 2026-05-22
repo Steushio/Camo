@@ -212,13 +212,12 @@ class AddEditCameraDialog(QDialog):
         device_label = "Virtual Camera Target:" if os.name == 'nt' else "V4L2 Virtual Device:"
         form.addRow(device_label, self.device_combo)
 
-        # GPU acceleration selection
-        self.hw_combo = QComboBox()
-        self.hw_combo.addItem("Auto Detect (Recommended)", "auto")
-        self.hw_combo.addItem("NVIDIA (NVDEC)", "nvidia")
-        self.hw_combo.addItem("Intel/AMD (VA-API)", "vaapi")
-        self.hw_combo.addItem("Disable HW Acceleration", "cpu")
-        form.addRow("GPU Decoding Mode:", self.hw_combo)
+        # GPU acceleration has been removed (defaults to CPU decoding)
+
+        # UI Preview Toggle
+        self.preview_check = QCheckBox("Enable UI Preview (disable to save CPU)")
+        self.preview_check.setChecked(True)
+        form.addRow("", self.preview_check)
 
         # Local network bind selection
         self.bind_combo = QComboBox()
@@ -258,10 +257,8 @@ class AddEditCameraDialog(QDialog):
             if idx >= 0:
                 self.device_combo.setCurrentIndex(idx)
                 
-            # Select HW Mode
-            idx = self.hw_combo.findData(self.camera_data.get("hw_mode", "auto"))
-            if idx >= 0:
-                self.hw_combo.setCurrentIndex(idx)
+            # Preview setting
+            self.preview_check.setChecked(self.camera_data.get("enable_preview", True))
                 
             # Select network bind IP
             idx = self.bind_combo.findData(self.camera_data.get("network_bind", "default"))
@@ -292,7 +289,7 @@ class AddEditCameraDialog(QDialog):
             "name": self.name_input.text().strip(),
             "rtsp_url": self.url_input.text().strip(),
             "device": self.device_combo.currentData(),
-            "hw_mode": self.hw_combo.currentData(),
+            "enable_preview": self.preview_check.isChecked(),
             "network_bind": self.bind_combo.currentData(),
             "autostart": self.autostart_check.isChecked(),
             "enable_pipewire": self.pw_check.isChecked(),
@@ -334,7 +331,15 @@ class CameraCard(QFrame):
         # Direct Video Overlay Widget (renders via GStreamer Sync Window Handle)
         self.video_overlay = GstVideoOverlayWidget()
         self.video_overlay.setMinimumHeight(180)
-        layout.addWidget(self.video_overlay)
+        
+        if self.camera.get("enable_preview", True):
+            layout.addWidget(self.video_overlay)
+        else:
+            no_preview_label = QLabel("Preview Disabled (CPU Saved)")
+            no_preview_label.setAlignment(Qt.AlignCenter)
+            no_preview_label.setStyleSheet("color: #8E93B3; font-size: 13px; background-color: #12131C; border: 1px dashed #23273A; border-radius: 4px;")
+            no_preview_label.setMinimumHeight(180)
+            layout.addWidget(no_preview_label)
 
         # Control and Status Bottom Bar
         bottom = QHBoxLayout()
@@ -370,7 +375,7 @@ class CameraCard(QFrame):
             self.pipeline_ref = None
         else:
             # Pass our native window handle to GStreamer
-            win_id = self.video_overlay.winId()
+            win_id = self.video_overlay.winId() if self.camera.get("enable_preview", True) else None
             pipeline = self.manager.start_camera(cam_id, win_id)
             if pipeline:
                 self.pipeline_ref = pipeline
@@ -889,7 +894,7 @@ class CAMOMainWindow(QMainWindow):
                     name=data["name"],
                     rtsp_url=data["rtsp_url"],
                     device=data["device"],
-                    hw_mode=data["hw_mode"],
+                    enable_preview=data["enable_preview"],
                     network_bind=data["network_bind"],
                     enable_pipewire=data["enable_pipewire"],
                     enable_v4l2=data["enable_v4l2"],
@@ -907,7 +912,7 @@ class CAMOMainWindow(QMainWindow):
                 name=data["name"],
                 rtsp_url=data["rtsp_url"],
                 device=data["device"],
-                hw_mode=data["hw_mode"],
+                enable_preview=data["enable_preview"],
                 network_bind=data["network_bind"],
                 enable_pipewire=data["enable_pipewire"],
                 enable_v4l2=data["enable_v4l2"],
