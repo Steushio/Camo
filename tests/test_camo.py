@@ -66,13 +66,13 @@ class TestCAMOPipelineBuilder(unittest.TestCase):
         cam_pipeline = CameraPipeline("test_nvidia", config)
         pipe_str = cam_pipeline.get_pipeline_string()
         
-        # avdec_h264 is strictly used
-        self.assertIn("avdec_h264", pipe_str)
+        # Nvidia decoders must be used
+        self.assertIn("nvh264dec", pipe_str)
         # PipeWire sink must be populated with camera name
         self.assertIn("pipewiresink", pipe_str)
         self.assertIn('client-name="Nvidia Cam"', pipe_str)
-        # V4L2 feeder appsink must be present on Linux instead of direct v4l2sink
-        self.assertIn("appsink name=v4l2_feeder", pipe_str)
+        # V4L2 device sink must be present
+        self.assertIn("v4l2sink device=/dev/video10", pipe_str)
 
     def test_pipeline_generation_vaapi(self):
         config = {
@@ -88,9 +88,9 @@ class TestCAMOPipelineBuilder(unittest.TestCase):
         cam_pipeline = CameraPipeline("test_vaapi", config)
         pipe_str = cam_pipeline.get_pipeline_string()
         
-        self.assertIn("avdec_h264", pipe_str)
+        self.assertIn("vaapih264dec", pipe_str)
         self.assertIn("pipewiresink", pipe_str)
-        self.assertNotIn("appsink name=v4l2_feeder", pipe_str) # V4L2 output disabled
+        self.assertNotIn("v4l2sink", pipe_str) # V4L2 output disabled
 
 
 if __name__ == '__main__':

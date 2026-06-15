@@ -24,19 +24,14 @@ if command -v apt-get >/dev/null 2>&1; then
         libgstreamer1.0-dev \
         libgstreamer-plugins-base1.0-dev \
         gstreamer1.0-pipewire \
-        dkms \
-        linux-headers-$(uname -r) \
-        git \
-        make \
-        gcc \
+        v4l2loopback-dkms \
         v4l2loopback-utils \
         python3-pip \
         python3-venv \
         python3-gi \
         python3-gi-cairo \
         gir1.2-gst-rtsp-server-1.0 \
-        policykit-1 \
-        libxcb-cursor0
+        policykit-1
         
     # Add current user to video group to access webcam devices without sudo
     echo "Configuring webcam device permissions..."
@@ -54,16 +49,11 @@ elif command -v dnf >/dev/null 2>&1; then
         gstreamer1-devel \
         gstreamer1-plugins-base-devel \
         pipewire-gstreamer \
-        dkms \
-        kernel-devel \
-        git \
-        make \
-        gcc \
+        v4l2loopback \
         python3-pip \
         python3-devel \
         python3-gobject \
-        polkit \
-        xcb-util-cursor
+        polkit
         
     # Add current user to video group to access webcam devices without sudo
     echo "Configuring webcam device permissions..."
@@ -79,16 +69,11 @@ elif command -v pacman >/dev/null 2>&1; then
         gst-plugins-ugly \
         gst-libav \
         pipewire \
-        dkms \
-        linux-headers \
-        git \
-        make \
-        gcc \
+        v4l2loopback-dkms \
         v4l2loopback-utils \
         python-pip \
         python-gobject \
-        polkit \
-        xcb-util-cursor
+        polkit
         
     # Add current user to video group if not already there
     echo "Configuring webcam device permissions..."
@@ -115,36 +100,6 @@ pip install --upgrade pip
 
 # Install PySide6
 pip install PySide6
-
-echo "====================================================="
-echo " Installing Latest v4l2loopback Driver from Source"
-echo "====================================================="
-
-V4L2_DIR="/tmp/camo_v4l2loopback"
-rm -rf "$V4L2_DIR"
-echo "Cloning latest v4l2loopback repository..."
-if git clone https://github.com/umlaeute/v4l2loopback.git "$V4L2_DIR"; then
-    cd "$V4L2_DIR"
-    V4L2_VERSION=$(./currentversion.sh)
-    echo "Registering and building v4l2loopback v$V4L2_VERSION with DKMS..."
-    
-    # Remove older dkms tree if registered
-    sudo dkms remove -m v4l2loopback -v "$V4L2_VERSION" --all 2>/dev/null || true
-    
-    # Copy to dkms source tree
-    sudo cp -R . "/usr/src/v4l2loopback-$V4L2_VERSION"
-    
-    # Add, build, and install
-    sudo dkms add -m v4l2loopback -v "$V4L2_VERSION"
-    sudo dkms build -m v4l2loopback -v "$V4L2_VERSION"
-    sudo dkms install -m v4l2loopback -v "$V4L2_VERSION"
-    
-    cd - >/dev/null
-    rm -rf "$V4L2_DIR"
-    echo "Latest v4l2loopback module successfully installed!"
-else
-    echo "Warning: Could not clone v4l2loopback from GitHub. Skipping source compilation."
-fi
 
 echo "====================================================="
 echo " Configuring v4l2loopback Virtual Camera Driver"
