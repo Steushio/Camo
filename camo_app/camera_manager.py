@@ -41,7 +41,7 @@ class PersistentVCam(QObject):
         pipeline_str = (
             f"appsrc name=vcam_src format=time is-live=true block=false "
             f"max-bytes=500000 ! "
-            f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=upstream ! "
+            f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
             f"videoconvert ! video/x-raw,format=YUY2 ! "
             f"v4l2sink device={self.device_path} sync=false"
         )
@@ -134,17 +134,17 @@ class CameraPipeline(QObject):
         enable_preview = self.config.get("enable_preview", True)
 
         # Leaky queue helper – max 1 frame in flight; drops older frames to stay live.
-        # leaky=upstream means new arriving frames displace stale queued frames.
+        # leaky=downstream means new arriving frames displace stale queued frames.
         def leaky_q():
-            return "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=upstream"
+            return "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"
 
         # Base RTSP ingestion:
-        #   latency=0            – no jitterbuffer latency target
+        #   latency=100          – small jitterbuffer latency target to prevent drop-induced corruption
         #   drop-on-latency=true – discard packets that exceed the latency budget
         #                          so the buffer never grows over time
         pipeline_str = (
-            f"rtspsrc location=\"{rtsp_url}\" latency=0 drop-on-latency=true ! "
-            f"rtph264depay ! h264parse ! avdec_h264 ! videoscale ! video/x-raw,width=1920,height=1080 ! tee name=t "
+            f"rtspsrc location=\"{rtsp_url}\" latency=100 drop-on-latency=true protocols=tcp timeout=5000000 tcp-timeout=5000000 ! "
+            f"rtph264depay request-keyframe=true ! h264parse ! avdec_h264 max-threads=1 ! videoscale method=0 ! video/x-raw,width=1920,height=1080 ! tee name=t "
         )
 
         # Preview output – sync=false renders frames immediately without waiting
@@ -177,9 +177,10 @@ class CameraPipeline(QObject):
                 # Linux: feed frames via appsink into the PersistentVCam pipeline.
                 # This keeps /dev/videoX open for writing at all times so OBS never
                 # encounters EBUSY when we stop and restart RTSP routing.
+                # Remove redundant videoconvert ! video/x-raw,format=I420 since
+                # PersistentVCam does its own conversion to YUY2.
                 pipeline_str += (
-                    f"t. ! {leaky_q()} ! videoconvert ! video/x-raw,format=I420 ! "
-                    f"appsink name=v4l2_feeder emit-signals=true max-buffers=1 drop=true sync=false "
+                    f"t. ! {leaky_q()} ! appsink name=v4l2_feeder emit-signals=true max-buffers=1 drop=true sync=false "
                 )
 
         return pipeline_str
@@ -255,6 +256,9 @@ class CameraPipeline(QObject):
             self.reconnect_timer.stop()
 
         if self.pipeline:
+            bus = self.pipeline.get_bus()
+            if bus:
+                bus.set_sync_handler(None)
             self.pipeline.set_state(Gst.State.NULL)
             self.pipeline = None
 

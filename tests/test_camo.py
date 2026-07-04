@@ -51,46 +51,54 @@ class TestCAMONetworkUtils(unittest.TestCase):
 
 
 class TestCAMOPipelineBuilder(unittest.TestCase):
-    def test_pipeline_generation_nvidia(self):
+    def test_pipeline_generation_basic(self):
         config = {
-            "name": "Nvidia Cam",
+            "name": "Standard Cam",
             "rtsp_url": "rtsp://192.168.1.100/stream",
             "device": "/dev/video10",
-            "hw_mode": "nvidia",
             "network_bind": "default",
             "enable_pipewire": True,
-            "enable_v4l2": True
+            "enable_v4l2": True,
+            "enable_preview": True
         }
         
         # Construct pipeline and inspect generated string
-        cam_pipeline = CameraPipeline("test_nvidia", config)
+        cam_pipeline = CameraPipeline("test_standard", config)
         pipe_str = cam_pipeline.get_pipeline_string()
         
-        # Nvidia decoders must be used
-        self.assertIn("nvh264dec", pipe_str)
+        # Verify GStreamer elements and optimized properties
+        self.assertIn("avdec_h264 max-threads=1", pipe_str)
+        self.assertIn("rtspsrc location=\"rtsp://192.168.1.100/stream\"", pipe_str)
+        self.assertIn("latency=100", pipe_str)
+        self.assertIn("protocols=tcp", pipe_str)
+        self.assertIn("timeout=5000000", pipe_str)
+        self.assertIn("rtph264depay request-keyframe=true", pipe_str)
+        self.assertIn("videoscale method=0", pipe_str)
+        self.assertIn("leaky=downstream", pipe_str)
+        
         # PipeWire sink must be populated with camera name
         self.assertIn("pipewiresink", pipe_str)
-        self.assertIn('client-name="Nvidia Cam"', pipe_str)
-        # V4L2 device sink must be present
-        self.assertIn("v4l2sink device=/dev/video10", pipe_str)
+        self.assertIn('client-name="Standard Cam"', pipe_str)
+        
+        # Linux V4L2 appsink feeder must be present
+        self.assertIn("appsink name=v4l2_feeder", pipe_str)
 
-    def test_pipeline_generation_vaapi(self):
+    def test_pipeline_generation_disabled_v4l2(self):
         config = {
             "name": "VAAPI Cam",
             "rtsp_url": "rtsp://192.168.1.100/stream",
             "device": "/dev/video11",
-            "hw_mode": "vaapi",
             "network_bind": "default",
             "enable_pipewire": True,
-            "enable_v4l2": False
+            "enable_v4l2": False,
+            "enable_preview": True
         }
         
-        cam_pipeline = CameraPipeline("test_vaapi", config)
+        cam_pipeline = CameraPipeline("test_no_v4l2", config)
         pipe_str = cam_pipeline.get_pipeline_string()
         
-        self.assertIn("vaapih264dec", pipe_str)
         self.assertIn("pipewiresink", pipe_str)
-        self.assertNotIn("v4l2sink", pipe_str) # V4L2 output disabled
+        self.assertNotIn("appsink name=v4l2_feeder", pipe_str)
 
 
 if __name__ == '__main__':
